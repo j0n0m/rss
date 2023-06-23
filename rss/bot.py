@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
+import re
 
 from typing import Any, Iterable
 from datetime import datetime
@@ -116,6 +117,20 @@ class RSSBot(Plugin):
             }
         )
         msgtype = MessageType.NOTICE if sub.send_notice else MessageType.TEXT
+        if sub.filter:
+            filter_message = message
+            if sub.filter_template:
+                filter_message = sub.filter_template.safe_substitute(
+                    {
+                        "feed_url": feed.url,
+                        "feed_title": feed.title,
+                        "feed_subtitle": feed.subtitle,
+                        "feed_link": feed.link,
+                        **attr.asdict(entry),
+                    }
+                )
+            if not re.findall(sub.filter, filter_message):
+                return
         try:
             return await self.client.send_markdown(
                 sub.room_id, message, msgtype=msgtype, allow_html=True
@@ -421,6 +436,8 @@ class RSSBot(Plugin):
             user_id=sub.user_id,
             notification_template=Template(template),
             send_notice=sub.send_notice,
+            filter_template=sub.filter_template,
+            filter=sub.filter,
         )
         sample_entry = Entry(
             feed_id=feed.id,
@@ -450,6 +467,98 @@ class RSSBot(Plugin):
         await self.dbm.set_send_notice(feed.id, evt.room_id, setting)
         send_type = "m.notice" if setting else "m.text"
         await evt.reply(f"Updates for feed ID {feed.id} will now be sent as `{send_type}`")
+
+    @rss.subcommand(
+        "filter_template",
+        aliases=("filter_t", "filter_tpl"),
+        help="Change the filter template for a subscription in this room",
+    )
+    @command.argument("feed_id", "feed ID", parser=int)
+    @command.argument("filter_template", "new filter template", pass_raw=True, required=False)
+    async def command_template(self, evt: MessageEvent, feed_id: int, filter_template: str) -> None:
+        if not await self.can_manage(evt):
+            return
+        sub, feed = await self.dbm.get_subscription(feed_id, evt.room_id)
+        if not sub:
+            await evt.reply("This room is not subscribed to that feed")
+            return
+        if not filter_template:
+            await evt.reply(
+                '<p>Current filter template in this room:</p><pre><code language="markdown">'
+                f"{html.escape(sub.filter_template.template)}"
+                "</code></pre>",
+                allow_html=True,
+                markdown=False,
+            )
+            return
+        await self.dbm.update_filter_template(feed.id, evt.room_id, filter_template)
+        sub = Subscription(
+            feed_id=feed.id,
+            room_id=sub.room_id,
+            user_id=sub.user_id,
+            notification_template=sub.filter_template,
+            send_notice=sub.send_notice,
+            filter_template=Template(filter_template),
+            filter=sub.filter,
+        )
+        sample_entry = Entry(
+            feed_id=feed.id,
+            id="SAMPLE",
+            date=datetime.now(),
+            title="Sample entry",
+            summary="This is a sample entry to demonstrate your new template",
+            link="http://example.com",
+            author="author@example.com",
+            categories="Sample,Categories",
+        )
+        await evt.reply(f"Filter template for feed ID {feed.id} updated. Sample notification:")
+        await self._send(feed, sample_entry, sub)
+
+    @rss.subcommand(
+        "filter",
+        aliases=("regex"),
+        help="Change the regex filter for a subscription in this room",
+    )
+    @command.argument("feed_id", "feed ID", parser=int)
+    @command.argument("filter", "new filter", pass_raw=True, required=False)
+    async def command_filter(self, evt: MessageEvent, feed_id: int, filter: str) -> None:
+        if not await self.can_manage(evt):
+            return
+        sub, feed = await self.dbm.get_subscription(feed_id, evt.room_id)
+        if not sub:
+            await evt.reply("This room is not subscribed to that feed")
+            return
+        if not filter:
+            await evt.reply(
+                '<p>Current filter in this room:</p><pre><code language="markdown">'
+                f"{html.escape(sub.filter or 'None')}"
+                "</code></pre>",
+                allow_html=True,
+                markdown=False,
+            )
+            return
+        try:
+            re.compile(filter)
+        except re.error:
+            await evt.reply(
+                '<p>This filter is not a valid regex pattern:</p><pre><code language="markdown">'
+                f"{html.escape(filter)}"
+                "</code></pre>",
+                allow_html=True,
+                markdown=False,
+            )
+            return
+        await self.dbm.update_filter(feed.id, evt.room_id, filter)
+        sub = Subscription(
+            feed_id=feed.id,
+            room_id=sub.room_id,
+            user_id=sub.user_id,
+            notification_template=sub.notification_template,
+            send_notice=sub.send_notice,
+            filter_template=sub.filter_template,
+            filter=filter,
+        )
+        await evt.reply(f"Filter for feed ID {feed.id} updated.")
 
     @staticmethod
     def _format_subscription(feed: Feed, subscriber: str) -> str:

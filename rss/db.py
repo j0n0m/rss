@@ -39,6 +39,8 @@ class Subscription:
     user_id: UserID
     notification_template: Template
     send_notice: bool
+    filter_template: Template
+    filter: str
 
     @classmethod
     def from_row(cls, row: Record | None) -> Subscription | None:
@@ -51,12 +53,16 @@ class Subscription:
             return None
         send_notice = bool(row["send_notice"])
         tpl = Template(row["notification_template"])
+        filter_tpl = Template(row["filter_template"])
+        filter = row["filter"]
         return cls(
             feed_id=feed_id,
             room_id=room_id,
             user_id=user_id,
             notification_template=tpl,
             send_notice=send_notice,
+            filter_template=filter_tpl,
+            filter=filter,
         )
 
 
@@ -221,9 +227,11 @@ class DBManager:
         user_id: UserID,
         template: str | None = None,
         send_notice: bool = True,
+        filter_template: str | None = None,
+        filter: str | None = None,
     ) -> None:
         q = """
-        INSERT INTO subscription (feed_id, room_id, user_id, notification_template, send_notice)
+        INSERT INTO subscription (feed_id, room_id, user_id, notification_template, send_notice, filter_template, filter)
         VALUES ($1, $2, $3, $4, $5)
         """
         template = template or "New post in $feed_title: [$title]($link)"
@@ -240,3 +248,11 @@ class DBManager:
     async def set_send_notice(self, feed_id: int, room_id: RoomID, send_notice: bool) -> None:
         q = "UPDATE subscription SET send_notice=$3 WHERE feed_id=$1 AND room_id=$2"
         await self.db.execute(q, feed_id, room_id, send_notice)
+
+    async def update_filter_template(self, feed_id: int, room_id: RoomID, filter_template: str) -> None:
+        q = "UPDATE subscription SET filter_template=$3 WHERE feed_id=$1 AND room_id=$2"
+        await self.db.execute(q, feed_id, room_id, filter_template)
+
+    async def update_filter(self, feed_id: int, room_id: RoomID, filter: str) -> None:
+        q = "UPDATE subscription SET filter=$3 WHERE feed_id=$1 AND room_id=$2"
+        await self.db.execute(q, feed_id, room_id, filter)

@@ -44,6 +44,8 @@ async def upgrade_latest(conn: Connection, scheme: Scheme) -> None:
 
             notification_template TEXT,
             send_notice           BOOLEAN DEFAULT true,
+            filter_template       TEXT,
+            filter                TEXT,
 
             PRIMARY KEY (feed_id, room_id),
             FOREIGN KEY (feed_id) REFERENCES feed (id)
@@ -79,3 +81,8 @@ async def upgrade_v3(conn: Connection) -> None:
 async def upgrade_v4(conn: Connection) -> None:
     await conn.execute("ALTER TABLE entry ADD COLUMN author TEXT DEFAULT ''")
     await conn.execute("ALTER TABLE entry ADD COLUMN categories TEXT DEFAULT ''")
+
+@upgrade_table.register(description="Add filter to subscriptions")
+async def upgrade_v5(conn: Connection) -> None:
+    await conn.execute("ALTER TABLE subscription ADD COLUMN filter_template TEXT DEFAULT NULL")
+    await conn.execute("ALTER TABLE subscription ADD COLUMN filter TEXT DEFAULT NULL")
