@@ -51,12 +51,14 @@ async def upgrade_latest(conn: Connection, scheme: Scheme) -> None:
     )
     await conn.execute(
         """CREATE TABLE IF NOT EXISTS entry (
-            feed_id INTEGER,
-            id      TEXT,
-            date    timestamp NOT NULL,
-            title   TEXT NOT NULL,
-            summary TEXT NOT NULL,
-            link    TEXT NOT NULL,
+            feed_id    INTEGER,
+            id         TEXT,
+            date       timestamp NOT NULL,
+            title      TEXT NOT NULL,
+            summary    TEXT NOT NULL,
+            link       TEXT NOT NULL,
+            author     TEXT NOT NULL,
+            categories TEXT NOT NULL,
             PRIMARY KEY (feed_id, id),
             FOREIGN KEY (feed_id) REFERENCES feed (id)
         )"""
@@ -72,3 +74,8 @@ async def upgrade_v2(conn: Connection) -> None:
 async def upgrade_v3(conn: Connection) -> None:
     await conn.execute("ALTER TABLE feed ADD COLUMN next_retry BIGINT DEFAULT 0")
     await conn.execute("ALTER TABLE feed ADD COLUMN error_count BIGINT DEFAULT 0")
+
+@upgrade_table.register(description="Add author and categories to entries")
+async def upgrade_v4(conn: Connection) -> None:
+    await conn.execute("ALTER TABLE entry ADD COLUMN author TEXT DEFAULT ''")
+    await conn.execute("ALTER TABLE entry ADD COLUMN categories TEXT DEFAULT ''")

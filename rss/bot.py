@@ -250,7 +250,9 @@ class RSSBot(Plugin):
         ).strip()
         id = str(entry["id"])
         link = entry.get("url") or id
-        return Entry(feed_id=feed_id, id=id, date=date, title=title, summary=summary, link=link)
+        author = entry.get("author", "")
+        categories = ",".join(entry.get("tags", []))
+        return Entry(feed_id=feed_id, id=id, date=date, title=title, summary=summary, link=link, author=author, categories=categories)
 
     @classmethod
     async def _parse_rss(
@@ -294,6 +296,8 @@ class RSSBot(Plugin):
             title=getattr(entry, "title", ""),
             summary=getattr(entry, "description", "").strip(),
             link=getattr(entry, "link", ""),
+            author=getattr(entry, "author", ""),
+            categories=",".join(map(lambda tag: tag.get("term", ""), getattr(entry, "tags", []))),
         )
 
     @staticmethod
@@ -425,6 +429,8 @@ class RSSBot(Plugin):
             title="Sample entry",
             summary="This is a sample entry to demonstrate your new template",
             link="http://example.com",
+            author="author@example.com",
+            categories="Sample,Categories",
         )
         await evt.reply(f"Template for feed ID {feed.id} updated. Sample notification:")
         await self._send(feed, sample_entry, sub)
